@@ -1,7 +1,7 @@
 # Graph Dirichlet Energy for Fitting-Free Bivariate Causal Inference
 
 ```
-git clone https://github.com/povidanius/laplacian_causal_inference
+git clone --recurse-submodules https://github.com/povidanius/laplacian_causal_inference
 ```
 
 Given a sample of two variables the method estimates which causes which.
