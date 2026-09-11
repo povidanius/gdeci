@@ -1,0 +1,3 @@
+[submodule "loci"]
+	path = loci
+	url = https://github.com/aleximmer/loci/

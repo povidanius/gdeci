@@ -1,0 +1,187 @@
+================================================================================
+run_nlogn -- O(n log n) graph-Dirichlet causal direction score on the benchmarks
+================================================================================
+
+WHAT THIS IS
+
+  A single self-contained implementation of the direction score, written so that
+  the cost is O(n log n) in the sample size rather than O(n^2), plus a driver
+  that runs it over the 1899 pairs of the benchmark suite.
+
+  Files:
+     lap_nlogn.py    the implementation and its command line
+     run_nlogn.sh    verify, then run the suite, optionally time the scaling
+     run_nlogn.txt   this file
+
+  The dense O(n^2) reference implementation of the same score is run by
+  ../run_laplacian_direct_estimator.sh, which reports the four columns of
+  Table (b) of paper_sp_letters/laplacian_causal_inference/short_version.tex.
+
+  It reproduces the "Lap_unif" / "Lap_unif-unnorm" columns of the validation
+  report exactly: checked against experiments/validation/rank_methods.py on all
+  13 benchmarks x 10 seeds, maximum difference in accuracy 0.0000, and on
+  individual pairs the scores agree to 1e-13 relative with zero decision flips.
+
+
+--------------------------------------------------------------------------------
+QUICK START
+--------------------------------------------------------------------------------
+
+  cd .../laplacian_causality
+  ./run_nlogn.sh
+
+  That verifies correctness, scores all 1899 pairs with 10 tie-breaking seeds,
+  and writes per-pair results to results_nlogn.csv.  It takes about 5 seconds on
+  8 cores.
+
+  ./run_nlogn.sh --quick        one seed instead of ten (~2 s)
+  ./run_nlogn.sh --scaling      also time n = 1e3, 1e4, 1e5, 1e6
+  ./run_nlogn.sh --seeds 0,1,2  choose the seeds
+  ./run_nlogn.sh --out my.csv   choose the output file
+
+  Use a specific interpreter with:   PYTHON=/path/to/python ./run_nlogn.sh
+
+
+--------------------------------------------------------------------------------
+REQUIREMENTS
+--------------------------------------------------------------------------------
+
+  Python 3.7+, numpy, scipy, pandas.  Nothing else: no torch, no cdt, no GPU.
+  (The rest of the repository needs more; this path deliberately does not.)
+
+  Data must be in place next to the script:
+     loci/data/     the benchmark pairs shipped with the LOCI repository
+     pairs/         the Tuebingen cause-effect pairs
+  The script checks for both and stops with a clear message if either is absent.
+
+
+--------------------------------------------------------------------------------
+WHAT IT COMPUTES
+--------------------------------------------------------------------------------
+
+  Both variables are mapped to the rank grid u_k = k/(n+1), ties broken at
+  random from the given seed.  They then carry the same value set, so a single
+  kernel serves both directions:
+
+      sigma = m * median_{i<j} |u_i - u_j|
+      W_ij  = exp( -(u_i - u_j)^2 / (2 sigma^2) )      self-loops kept, W_ii = 1
+      deg   = W 1,      M = sum_ij W_ij
+
+      unnorm variant :  S = y^T (D - W) y / M          (default)
+      sym    variant :  S = y^T (I - D^-1/2 W D^-1/2) y / M
+
+  Decide X -> Y when the forward score is the smaller of the two.  The
+  multiplier is m = 0.07362, the value frozen in the paper; it was selected on a
+  disjoint synthetic generator and is not re-selected here.  Pass --m to change
+  it, but note that any such number is then no longer held out.
+
+
+--------------------------------------------------------------------------------
+WHY IT IS O(n log n)
+--------------------------------------------------------------------------------
+
+  1. On the rank grid the kernel matrix is Toeplitz: W_kl depends only on
+     |k - l|.  Every matrix-vector product is therefore a convolution, done by
+     FFT, and the n x n matrix is never formed.  Memory is O(n).
+
+  2. The median bandwidth is exact in O(n) with no sorting of pairwise
+     distances: on the grid the distance d/(n+1) occurs exactly (n - d) times,
+     so the median is a cumulative-sum lookup over n terms rather than an
+     order statistic of n(n-1)/2 numbers.
+
+  Four further optimisations, none of which change the result:
+
+  3. The kernel is truncated where it falls below 1e-18, about 15% of n on each
+     side at the frozen multiplier.  This shortens the transform from ~3n to
+     ~1.4n.
+  4. The kernel spectrum is computed once and cached, rather than recomputed
+     inside every convolution.
+  5. Whole kernels are cached by (n, m).  The suite has 1899 pairs but few
+     distinct n, so this turns ~19000 kernel builds into a few dozen.
+  6. Both directions are transformed together in one batched rFFT.
+
+  Measured against the reference implementation, on the score itself with the
+  kernel cached:  n=1e3 4.5x,  n=1e4 1.8x,  n=1e5 5.2x,  n=1e6 2.2x.
+
+
+--------------------------------------------------------------------------------
+MEASURED RUNTIME  (Intel Core i7-4790K, single thread unless noted)
+--------------------------------------------------------------------------------
+
+  Whole suite, 1899 pairs, 7 worker processes:
+        1 seed    0.4 s      (0.23 ms per pair)
+       10 seeds   2.9 s      (0.15 ms per pair-seed)
+
+  Single pair, kernel cached:
+        n = 1e3     0.46 ms
+        n = 1e4     8.5  ms
+        n = 1e5    76    ms
+        n = 1e6  1298    ms
+
+  For scale, the dense O(n^2) form of the same score takes 1.27 s at n = 1e4 and
+  would need 8 TB of memory at n = 1e6; the LOCI estimator takes 397 s for a
+  single pair at n = 1e4.
+
+
+--------------------------------------------------------------------------------
+OUTPUT
+--------------------------------------------------------------------------------
+
+  results_nlogn.csv, one row per (pair, seed):
+
+     benchmark  pair_id  n  weight  seed  variant  S_fwd  S_rev  decision  correct
+
+  The loaders return the true cause first, so `decision` true means the method
+  chose correctly and `correct` is 1.0.  The console summary prints accuracy per
+  benchmark **in the order used by the paper's tables** (AN, AN-s, LS, LS-s,
+  MN-U, SIM, SIM-c, SIM-G, SIM-ln, Cha, Multi, Net, Tuebingen), then the
+  pairmeta-weighted Tuebingen accuracy and the macro mean over the 12
+  non-Tuebingen benchmarks.  The script ends with the total execution time.
+
+  Expected values with the frozen multiplier, 10 seeds, unnorm variant:
+
+     AN 1.000   AN-s 0.830   LS 1.000   LS-s 0.840   MN-U 1.000
+     SIM 0.650  SIM-c 0.690  SIM-G 0.560  SIM-ln 0.790
+     Cha 0.499  Multi 0.607  Net 0.847
+     Tuebingen 0.684 (99 pairs)      mean over the 12 synthetic 0.776
+
+  Tuebingen is LOCI's 99-pair subset (108 less the six multivariate pairs and
+  the three discrete pairs 47, 70, 107 that the LOCI repository blacklists).
+
+
+--------------------------------------------------------------------------------
+CHECKING IT YOURSELF
+--------------------------------------------------------------------------------
+
+  python lap_nlogn.py --verify 200
+
+  Scores the first 200 pairs with both this implementation and the reference in
+  experiments/validation/rank_methods.py and prints the maximum relative
+  difference and the number of decision flips.  It exits non-zero if the scores
+  differ by more than 1e-10 relative or any decision changes.
+
+  python lap_nlogn.py --bench 100000
+
+  Times a single pair at that size, median of five runs, kernel cached.
+
+
+--------------------------------------------------------------------------------
+NOTES AND LIMITS
+--------------------------------------------------------------------------------
+
+  * Everything is float64.  The torch pipeline elsewhere in this repository
+    computes its kernel in float32, which on a rank grid loses about 1e-5
+    relative accuracy and flips two near-tie decisions out of 1899.  Use these
+    numbers where the two disagree.
+
+  * The rank transform makes the score invariant to any strictly increasing
+    transformation of either variable, and makes the edge mass identical in the
+    two directions, so no marginal information is used.
+
+  * This is the *unnormalized* Dirichlet energy by default.  The validation
+    report finds it matches or beats the symmetric-normalized variant and is far
+    more robust to the bandwidth; pass --variant sym for the other one.
+
+  * Ranking costs 0.09 / 0.66 / 8.6 / 121 ms at n = 1e3 / 1e4 / 1e5 / 1e6 and is
+    included in the per-pair timings above.  It is unavoidable and is common to
+    any rank-based method.
