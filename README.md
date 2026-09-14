@@ -30,7 +30,7 @@ pip install torch                       # additionally for laplacian_causality.p
 import numpy as np
 from lap_nlogn import score
 
-# --- a pair with a known ground truth: X causes Y through a folded mechanism ---
+# --- a pair with a known ground truth: X causes Y ---
 rng = np.random.default_rng(0)
 n = 2000
 x = rng.uniform(-1, 1, n)                                   # cause
