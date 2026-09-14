@@ -4,7 +4,7 @@
 git clone --recurse-submodules https://github.com/povidanius/gdeci
 ```
 
-Given a sample of two variables the method estimates which causes which.
+Given a sample of two variables the method estimates which causes which is the cause and which is the effect.
 
 Two implementations are provided and they agree to `1e-13`:
 
