@@ -43,14 +43,6 @@ print(f'score(Y->X) = {rev:.6g}')
 print('inferred    :', 'X -> Y' if x_causes_y else 'Y -> X')
 print(f'margin      : {abs(fwd - rev) / (abs(fwd) + abs(rev)):.3f}')
 ```
-
-```
-score(X->Y) = 0.0129194
-score(Y->X) = 0.0823403
-inferred    : X -> Y
-margin      : 0.729
-```
-
 `x` and `y` are plain 1-D arrays of equal length.
 
 
