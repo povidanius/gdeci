@@ -55,11 +55,11 @@ margin      : 0.729
 
 
 
-## Reproducing the paper
+## Reproducing the papers GDECI results
 
 ```bash
-./run_nlogn.sh                       # fast estimator, all 1899 pairs, ~1 min
-./run_laplacian_direct_estimator.sh  # direct estimator, Table (b), ~5 min
+./run_nlogn.sh                       # fast estimator, all 1899 pairs, ~1 min (experimental, not used in the paper)
+./run_laplacian_direct_estimator.sh  # direct estimator, Table (b), ~5 min (used in the paper)
 ```
 
 
