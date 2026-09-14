@@ -55,7 +55,7 @@ margin      : 0.729
 
 
 
-## Reproducing the papers results for GDECI method
+## Reproducing the papers results for GDECI estimators
 
 ```bash
 ./run_nlogn.sh                       # fast estimator, all 1899 pairs, ~1 min (experimental, not used in the paper)
