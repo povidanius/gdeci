@@ -1,7 +1,7 @@
 # Graph Dirichlet Energy for Fitting-Free Bivariate Causal Inference
 
 ```
-git clone --recurse-submodules https://github.com/povidanius/laplacian_causal_inference
+git clone --recurse-submodules https://github.com/povidanius/gdeci
 ```
 
 Given a sample of two variables the method estimates which causes which.
@@ -54,20 +54,6 @@ margin      : 0.729
 `x` and `y` are plain 1-D arrays of equal length.
 
 
-### Checking it on repeated draws
-
-```python
-ok = 0
-for s in range(20):
-    r = np.random.default_rng(s)
-    xx = r.uniform(-1, 1, n)
-    yy = np.cos(3 * np.pi * xx) + 0.2 * r.standard_normal(n)
-    if r.random() < 0.5:                       # randomise which is presented first
-        ok += not score(yy, xx, 0.07362, r)[2]
-    else:
-        ok += score(xx, yy, 0.07362, r)[2]
-print(f'{ok}/20 correct')                      # -> 20/20 correct
-```
 
 ## Reproducing the paper
 
