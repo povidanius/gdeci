@@ -1,3 +1,6 @@
 [submodule "loci"]
 	path = loci
 	url = https://github.com/aleximmer/loci/
+[submodule "qpe_cd"]
+	path = qpe_cd
+	url = https://github.com/cyisk/qpe_cd
