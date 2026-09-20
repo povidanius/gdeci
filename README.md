@@ -1,5 +1,9 @@
 # Graph Dirichlet Energy for Fitting-Free Bivariate Causal Inference
 
+<p align="center">
+  <img src="gdeci-small.png" alt="GDECI logo" width="400">
+</p>
+
 ```
 git clone --recurse-submodules https://github.com/povidanius/gdeci
 ```
