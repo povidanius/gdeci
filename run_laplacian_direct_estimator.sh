@@ -3,9 +3,9 @@
 # paper_sp_letters/laplacian_causal_inference/short_version.tex, Table (b).
 #
 # This is the O(n^2) reference implementation: it forms the Gaussian kernel in
-# blocks and evaluates the quadratic form directly.  It produces the four
-# columns the paper reports from this repository -- Lap^std_raw, Lap^std_avg,
-# Lap^unif and EdgeMass.  For the O(n log n) version of the same score see
+# blocks and evaluates the quadratic form directly.  It produces the three
+# columns the paper reports from this repository -- Lap^std_avg, Lap^unif and
+# EdgeMass.  For the O(n log n) version of the same score see
 # run_nlogn.sh and run_nlogn.txt.
 #
 #   ./run_laplacian_direct_estimator.sh              compute, then summarise

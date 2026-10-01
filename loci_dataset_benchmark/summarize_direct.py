@@ -1,8 +1,8 @@
 """Print the direct (dense) Laplacian estimator's results in the paper's layout.
 
-Reads `results/per_pair.csv` written by `run_benchmark.py` and reports the four
+Reads `results/per_pair.csv` written by `run_benchmark.py` and reports the three
 columns of Table (b) of paper_sp_letters/.../short_version.tex that this
-repository computes -- Lap^std_raw, Lap^std_avg, Lap^unif and EdgeMass -- with
+repository computes -- Lap^std_avg, Lap^unif and EdgeMass -- with
 Wilson 95% intervals, in the paper's benchmark order.
 """
 import os
@@ -18,8 +18,8 @@ from make_table import decisions, wilson
 
 ORDER = [b[0] for b in D.BENCHMARKS]
 SYNTH = [b for b in ORDER if b != 'Tuebingen']
-COLS = ['Lap_std_raw', 'Lap_std_avg', 'Lap_unif', 'EdgeMass']
-HEAD = {'Lap_std_raw': 'Lap^std_raw', 'Lap_std_avg': 'Lap^std_avg',
+COLS = ['Lap_std_avg', 'Lap_unif', 'EdgeMass']
+HEAD = {'Lap_std_avg': 'Lap^std_avg',
         'Lap_unif': 'Lap^unif', 'EdgeMass': 'EdgeMass'}
 
 

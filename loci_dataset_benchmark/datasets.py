@@ -57,14 +57,14 @@ def _anlsmn(folder, pair_id):
 
 def _meta(folder):
     return pd.read_csv(os.path.join(DATA_DIR, folder, 'pairmeta.txt'),
-                       delim_whitespace=True, header=None,
+                       sep=r'\s+', header=None,
                        names=['id', 'cs', 'ce', 'es', 'ee', 'weight'],
                        index_col=0).astype(float)
 
 
 def _pairmeta_style(folder, pair_id, meta):
     df = pd.read_csv(os.path.join(DATA_DIR, folder, f'pair{pair_id:04d}.txt'),
-                     delim_whitespace=True, header=None)
+                     sep=r'\s+', header=None)
     m = meta.loc[pair_id]
     cause = df.iloc[:, int(m['cs']) - 1:int(m['ce'])].values
     effect = df.iloc[:, int(m['es']) - 1:int(m['ee'])].values

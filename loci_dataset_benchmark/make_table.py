@@ -34,14 +34,13 @@ TAB = {'AN': 'AN', 'AN-s': 'ANs', 'LS': 'LS', 'LS-s': 'LSs', 'MN-U': 'MNU',
 BASELINES = [('QCCD', 'QCCD'), ('GRCI', 'GRCI'), ('CAM', 'CAM'),
              ('IGCI', 'IGCI'), ('IGCI$_G$', 'IGCI_G'), ('RESIT', 'RESIT'),
              ('RESIT$_{\mathrm{std}}$', 'RESIT_std')]
-OURS = [r'\textsc{Lap}$^{\mathrm{std}}_{\mathrm{raw}}$', 
-        r'\textsc{Lap}$^{\mathrm{std}}_{\mathrm{avg}}$',
+OURS = [r'\textsc{Lap}$^{\mathrm{std}}_{\mathrm{avg}}$',
         r'\textsc{Lap}$^{\mathrm{unif}}$']
 CONTROLS = [r'\emph{EdgeMass}', r'\emph{VarRule}']
 RERUN = [r'\textsc{Loci}$^{\dagger}$', r'RECI$^{\dagger}$']
 PLAIN = ['QCCD', 'GRCI', 'CAM', 'IGCI', 'IGCI_G', 'RESIT', 'RESIT_std',
          'LOCI', 'RECI',
-         'Lap_std_raw', 'Lap_std_avg', 'Lap_unif', 'EdgeMass', 'VarRule']
+         'Lap_std_avg', 'Lap_unif', 'EdgeMass', 'VarRule']
 
 
 def wilson(k_or_p, n):
@@ -66,9 +65,11 @@ def positive(series):
 def decisions(df):
     """Per-pair correctness of each method; the cause is column 1 by construction."""
     out = pd.DataFrame(index=df.index)
-    out['Lap_std_raw'] = df.E_std_fwd < df.E_std_bwd
     out['Lap_std_avg'] = df.E_std_fwd / df.M_std_fwd < df.E_std_bwd / df.M_std_bwd
-    out['Lap_unif'] = df.E_unif_fwd / df.M_unif_fwd < df.E_unif_bwd / df.M_unif_bwd
+    # Fraction of tie-breaking seeds scored correct (see run_benchmark.py); the
+    # row-order-tie fallback is for per_pair.csv files written before that column.
+    out['Lap_unif'] = (df.unif_correct if 'unif_correct' in df else
+                       df.E_unif_fwd / df.M_unif_fwd < df.E_unif_bwd / df.M_unif_bwd)
     # Both controls follow the sign convention of the paper's table: the variable
     # with the SMALLER edge mass, respectively the smaller min-max variance, is
     # called the cause.  Reversing either rule gives one minus these accuracies.
@@ -199,13 +200,13 @@ def main():
            r'LOCI baseline files.}',
            r'\label{tab:loci-replication}',
            r'\resizebox{\textwidth}{!}{%',
-           r'\begin{tabular}{l r ' + 'r' * 7 + ' rr ' + 'r' * 3 + ' ' + 'r' * 2 + '}',
+           r'\begin{tabular}{l r ' + 'r' * 7 + ' rr ' + 'r' * 2 + ' ' + 'r' * 2 + '}',
            r'\toprule',
            r'& & \multicolumn{7}{c}{published per-pair outputs, not rerun} & '
            r'\multicolumn{2}{c}{rerun here} & '
-           r'\multicolumn{3}{c}{ours} & \multicolumn{2}{c}{marginal-only}\\',
-           r'\cmidrule(lr){3-9}\cmidrule(lr){10-11}\cmidrule(lr){12-14}'
-           r'\cmidrule(lr){15-16}',
+           r'\multicolumn{2}{c}{ours} & \multicolumn{2}{c}{marginal-only}\\',
+           r'\cmidrule(lr){3-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}'
+           r'\cmidrule(lr){14-15}',
            'benchmark & $n$ & ' + ' & '.join(head) + r'\\',
            r'\midrule']
     npairs_tex = dict(npairs, **{'Tue-w': 99})   # n_eff goes in the caption, not a cell

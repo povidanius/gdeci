@@ -5,7 +5,11 @@ putative effect is the graph signal:
 
     sigma = m * median_{i<j}|x_i - x_j|      (median recomputed per pair,
     W_ij  = exp(-(x_i-x_j)^2 / 2 sigma^2)     direction and preprocessing)
-    E     = y^T (I - D^{-1/2} W D^{-1/2}) y,   M = sum_ij W_ij
+    E     = y^T (D - W) y = 1/2 sum_ij W_ij (y_i - y_j)^2,   M = sum_ij W_ij
+
+The Laplacian is the unnormalized one, L = D - W, as in the paper: the energy
+depends on y only through the differences y_i - y_j, so L 1 = 0 and the decision
+is invariant to negating either variable.
 
 A single Gaussian bandwidth is used everywhere; no multi-scale kernel and no
 aggregation.  The multiplier is the one frozen in the paper, selected on 300
@@ -13,6 +17,11 @@ Causal Discovery Toolbox pairs disjoint from every benchmark here:
 
     m = 0.05535   under standardization
     m = 0.07362   under the rank transform
+
+Under the rank transform, ties are broken at random and the Lap^unif decision is
+averaged over the fixed seeds TIE_SEEDS (column `unif_correct`), exactly as in
+lap_nlogn.py.  The E_unif_* / M_unif_* columns keep the row-order tie-break for
+diagnostics only.
 
 All observations of every pair are used; nothing is subsampled.  Raw scores are
 written per pair so that decision rules and sign conventions can be varied in
@@ -27,11 +36,15 @@ from scipy.stats import rankdata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from laplacian_causality import _energy_and_mass, median_bandwidth, mean_distance
+from lap_nlogn import rank_grid
 
 import datasets as D
 
 M_STD = 0.05535        # frozen multiplier, standardized marginals
 M_RANK = 0.07362       # frozen multiplier, rank transform
+# Tie-breaking seeds for the rank transform, the same as run_nlogn.sh.  Fixed in
+# advance, not selected on accuracy.
+TIE_SEEDS = tuple(range(10))
 DEV = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -47,6 +60,10 @@ def standardize(v):
 
 def rank_transform(v):
     """Ranks rescaled to (0,1), ties broken deterministically by index.
+
+    Used only for the diagnostic E_unif_* / M_unif_* columns; the reported
+    Lap^unif decision averages over random tie-breaks instead (`unif_correct`,
+    see `unif_over_seeds`).
 
     Tie-breaking matters.  With `method='ordinal'` both variables carry exactly
     the grid {1..n}/(n+1), so the two directions share a bandwidth and an edge
@@ -74,6 +91,31 @@ def both_directions(x, y, m):
     return ef, mf, eb, mb
 
 
+def has_ties(v):
+    return len(np.unique(v)) < len(v)
+
+
+def unif_over_seeds(cause, effect, m):
+    """Fraction of tie-breaking seeds on which Lap^unif picks cause -> effect.
+
+    Ties are broken at random, exactly as `lap_nlogn.score` does it (same
+    `rank_grid`, same generator, same draw order), and the decision is averaged
+    over TIE_SEEDS.  Breaking ties by row index instead ties the result to the
+    order in which the data file happens to be stored: on Tuebingen, reversing
+    the rows moves the accuracy from 0.677 to 0.687, and single seeds range from
+    0.63 to 0.76.  Without ties every tie-break gives the same ranks, so one
+    evaluation suffices.  Labels are never consulted.
+    """
+    seeds = TIE_SEEDS if (has_ties(cause) or has_ties(effect)) else TIE_SEEDS[:1]
+    wins = []
+    for s in seeds:
+        rng = np.random.default_rng(s)
+        xr, yr = rank_grid(cause, rng), rank_grid(effect, rng)
+        ef, mf, eb, mb = both_directions(xr, yr, m)
+        wins.append(float(ef / mf < eb / mb))
+    return float(np.mean(wins))
+
+
 def main():
     rows = []
     for name, _, _, _ in D.BENCHMARKS:
@@ -86,6 +128,7 @@ def main():
                 benchmark=name, pair_id=pid, n=len(cause), weight=weight,
                 E_std_fwd=ef, M_std_fwd=mf, E_std_bwd=eb, M_std_bwd=mb,
                 E_unif_fwd=rf, M_unif_fwd=nf, E_unif_bwd=rb, M_unif_bwd=nb,
+                unif_correct=unif_over_seeds(cause, effect, M_RANK),
                 var_cause=float(np.var(cause)), var_effect=float(np.var(effect)),
                 var_mm_cause=float(np.var(minmax(cause))),
                 var_mm_effect=float(np.var(minmax(effect)))))

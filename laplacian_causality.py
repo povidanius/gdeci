@@ -44,13 +44,29 @@ def median_bandwidth(x, exact_max_n=4000):
 
 
 # --------------------------------------------------------------------------- #
-# normalized Laplacian regularizer
+# unnormalized Laplacian regularizer
 # --------------------------------------------------------------------------- #
 def _energy_and_mass(x, y, sigmas, block=2048):
-    """(y^T L_sym y, edge mass sum_ij W_ij) for W = sum_k exp(-d^2/2 sigma_k^2).
+    """(y^T L y, edge mass sum_ij W_ij) for L = D - W, the UNNORMALIZED Laplacian
+    of W = sum_k exp(-d^2 / 2 sigma_k^2).
 
-    Computed in row blocks, so the n x n kernel is never materialized.
-    Two passes: degrees first, then the quadratic form.
+    This is the criterion of the paper.  The energy is evaluated in the
+    difference form
+
+        y^T (D - W) y = 1/2 sum_ij W_ij (y_i - y_j)^2,
+
+    which is what makes the score invariant to negating either variable: it
+    depends on the signal only through differences, so L 1 = 0 and y -> 1 - y
+    (the rank vector of the negated variable) leaves it unchanged.  The
+    symmetric-normalized Laplacian I - D^{-1/2} W D^{-1/2} has no such property,
+    since L_sym 1 != 0 whenever the degrees are unequal.
+
+    The difference form is also the numerically stable one: every term is
+    nonnegative, whereas `sum_i d_i y_i^2 - y^T W y` subtracts two nearly equal
+    quantities.  Computed in row blocks, so the n x n kernel is never
+    materialized; one pass yields the energy and the edge mass together.  The
+    diagonal W_ii = 1 contributes to the mass but not to the energy, as in the
+    paper.
     """
     x = x.reshape(x.shape[0], -1).float()
     y = y.reshape(-1).double()
@@ -66,23 +82,23 @@ def _energy_and_mass(x, y, sigmas, block=2048):
             W += torch.exp(d2 * -g)
         return W
 
-    deg = torch.empty(n, dtype=torch.float64, device=x.device)
+    yf = y.float()
+    energy = 0.0                                  # 1/2 sum_ij W_ij (y_i - y_j)^2
+    mass = 0.0                                    # sum_ij W_ij
     for s in range(0, n, block):
         e = min(s + block, n)
-        deg[s:e] = kernel_block(s, e).sum(1).double()
+        W = kernel_block(s, e)
+        mass += W.sum(dtype=torch.float64).item()
+        dy = yf[s:e, None] - yf[None, :]
+        dy *= dy
+        dy *= W
+        energy += dy.sum(dtype=torch.float64).item()
 
-    z = y / torch.sqrt(deg)                       # D^{-1/2} y ; deg >= K (self-loops)
-    zwz = 0.0                                     # z^T W z
-    zf = z.float()
-    for s in range(0, n, block):
-        e = min(s + block, n)
-        zwz += (zf[s:e] * (kernel_block(s, e) @ zf)).double().sum().item()
-
-    return (y * y).sum().item() - zwz, deg.sum().item()
+    return 0.5 * energy, mass
 
 
 def laplacian_score(x, y, sigmas, block=2048, aggregation='sum_scaled', score='raw'):
-    """Dirichlet energy of y on the normalized-Laplacian graph of x.
+    """Dirichlet energy of y on the unnormalized-Laplacian graph of x.
 
     aggregation (only matters for K > 1 bandwidths):
       'sum_scaled' -- one graph per scale; each scale's energy is divided by that
@@ -90,7 +106,7 @@ def laplacian_score(x, y, sigmas, block=2048, aggregation='sum_scaled', score='r
                       equalizes the scales; without it the widest kernel carries
                       almost all the edge mass and dominates the sum.
       'kernel_sum' -- the kernels are summed into a single graph first, and the
-                      normalized Laplacian is formed on that sum.
+                      unnormalized Laplacian is formed on that sum.
 
     score: 'raw' returns the energy, 'rayleigh' divides by y^T y (scale-invariant
     in y; identical decisions to 'raw' whenever y is standardized).
@@ -134,7 +150,13 @@ def preprocess(v, device, mode='standardize'):
         lo, hi = t.min(), t.max()
         return (t - lo) / (hi - lo) if hi > lo else t - lo
     if mode == 'rank':                            # uniform marginals
-        r = np.asarray(rankdata(np.asarray(v), method='average')) / (len(v) + 1.0)
+        # Ordinal ranks, as in the paper's T_unif and in
+        # loci_dataset_benchmark/run_benchmark.rank_transform: both variables
+        # then carry exactly the grid {1..n}/(n+1), so the two directions share
+        # a bandwidth and an edge mass.  Average ranks leave ties in place, the
+        # edge masses differ between directions, and the Tuebingen accuracy of
+        # the rank score drops from 0.677 to 0.556.
+        r = np.asarray(rankdata(np.asarray(v), method='ordinal')) / (len(v) + 1.0)
         return torch.as_tensor(r, dtype=torch.float64, device=device).reshape(-1, 1)
     raise ValueError(mode)
 
@@ -214,9 +236,9 @@ def main():
                     choices=['minmax', 'none', 'standardize', 'rank'])
     ap.add_argument('--aggregation', default='sum_scaled',
                     choices=['sum_scaled', 'kernel_sum'],
-                    help='at a single scale these are simply the two reported '
-                         'scores: sum_scaled = E / edge mass (Lap^std_avg), '
-                         'kernel_sum = E alone (Lap^std_raw). The names refer to '
+                    help='at a single scale: sum_scaled = E / edge mass '
+                         '(Lap^std_avg, the reported score), kernel_sum = E '
+                         'alone (not reported). The names refer to '
                          'how several scales would be combined, which no '
                          'reported experiment does.')
     ap.add_argument('--score', default='raw', choices=['raw', 'rayleigh'])

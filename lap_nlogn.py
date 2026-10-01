@@ -7,10 +7,19 @@ same value set, so a single Gaussian kernel serves both directions:
 
     sigma  = m * median_{i<j} |u_i - u_j|
     W_ij   = exp(-(u_i - u_j)^2 / (2 sigma^2)),   deg = W 1,   M = sum_ij W_ij
-    E_sym  = y^T (I - D^-1/2 W D^-1/2) y          Delta = E / M
-    E_un   = y^T (D - W) y                        S     = E_un / M
+    E      = y^T (D - W) y = 1/2 sum_ij W_ij (y_i - y_j)^2
+    S      = E / M
 
 Decide X -> Y iff the forward score is the smaller one.
+
+The Laplacian is the UNNORMALIZED one, L = D - W, as in the paper.  Because the
+energy depends on the signal only through the differences y_i - y_j, we have
+L 1 = 0 and E(1 - y) = E(y), so negating either variable -- which maps its rank
+vector y to 1 - y -- leaves every score and hence every decision unchanged.  The
+symmetric-normalized Laplacian I - D^{-1/2} W D^{-1/2} does not have this
+property, since L_sym 1 != 0 whenever the degrees are unequal; `energy_sym` is
+retained only as the diagnostic contrast used by the orientation-flip test and
+is not part of the method.
 
 Why it is O(n log n)
 --------------------
@@ -111,15 +120,26 @@ class FastGridKernel:
         out = irfft(rfft(z, self.nfft, axis=-1) * self.spec, self.nfft, axis=-1)
         return out[..., self.half:self.half + self.n]
 
-    def energies(self, Y):
-        """(E_sym, E_unnorm) for each row of Y, in one batched transform."""
+    def energy(self, Y):
+        """E = y^T (D - W) y for each row of Y, in one batched transform.
+
+        This is the paper's Dirichlet energy, 1/2 sum_ij W_ij (y_i - y_j)^2,
+        evaluated as sum_i d_i y_i^2 - y^T W y.
+        """
+        Y = np.atleast_2d(np.asarray(Y, float))
+        WY = self.matvec(Y)
+        return (Y * Y) @ self.deg - np.einsum('ij,ij->i', Y, WY)
+
+    def energy_sym(self, Y):
+        """E_sym = y^T (I - D^-1/2 W D^-1/2) y for each row of Y.
+
+        NOT the method: the symmetric normalization destroys invariance to
+        negating a variable (L_sym 1 != 0).  Kept so that the orientation-flip
+        test can measure that failure against `energy`.
+        """
         Y = np.atleast_2d(np.asarray(Y, float))
         Z = Y / np.sqrt(self.deg)
-        WZ = self.matvec(np.vstack([Z, Y]))
-        k = Y.shape[0]
-        e_sym = np.einsum('ij,ij->i', Y, Y) - np.einsum('ij,ij->i', Z, WZ[:k])
-        e_un = (Y * Y) @ self.deg - np.einsum('ij,ij->i', Y, WZ[k:])
-        return e_sym, e_un
+        return np.einsum('ij,ij->i', Y, Y) - np.einsum('ij,ij->i', Z, self.matvec(Z))
 
 
 @functools.lru_cache(maxsize=256)
@@ -130,18 +150,17 @@ def kernel_for(n, m):
 # --------------------------------------------------------------------------- #
 # score
 # --------------------------------------------------------------------------- #
-def score(x, y, m, rng=None, variant='unnorm'):
+def score(x, y, m, rng=None):
     """(forward, reverse, decision) for the pair (x, y); True means x causes y.
 
-    variant 'unnorm' is the unnormalized Dirichlet energy over edge mass,
-    'sym' is the symmetric-normalized one.  Both directions share the kernel.
+    The score is the unnormalized Dirichlet energy over the edge mass,
+    S = y^T (D - W) y / sum_ij W_ij.  Both directions share the kernel.
     """
     u = rank_grid(x, rng)
     v = rank_grid(y, rng)
     K = kernel_for(len(u), m)
     Y = np.vstack([v[np.argsort(u)], u[np.argsort(v)]])
-    e_sym, e_un = K.energies(Y)
-    e = e_sym if variant == 'sym' else e_un
+    e = K.energy(Y)
     f, r = float(e[0] / K.mass), float(e[1] / K.mass)
     return f, r, f < r
 
@@ -150,27 +169,26 @@ def score(x, y, m, rng=None, variant='unnorm'):
 # benchmark driver
 # --------------------------------------------------------------------------- #
 def _one(task):
-    name, pid, cause, effect, weight, m, seeds, variant = task
+    name, pid, cause, effect, weight, m, seeds = task
     out = []
     for s in seeds:
-        f, r, dec = score(cause, effect, m, np.random.default_rng(s), variant)
+        f, r, dec = score(cause, effect, m, np.random.default_rng(s))
         out.append(dict(benchmark=name, pair_id=pid, n=len(cause), weight=weight,
-                        seed=s, variant=variant, S_fwd=f, S_rev=r,
+                        seed=s, S_fwd=f, S_rev=r,
                         decision=bool(dec), correct=float(dec)))
     return out
 
 
-def run_suite(m, seeds, variant, jobs, out_csv):
+def run_suite(m, seeds, jobs, out_csv):
     import pandas as pd
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     'loci_dataset_benchmark'))
     import datasets as D
 
-    tasks = [(name, pid, c, e, w, m, seeds, variant)
+    tasks = [(name, pid, c, e, w, m, seeds)
              for name, _, _, _ in D.BENCHMARKS
              for pid, c, e, w in D.load(name)]
-    print(f'{len(tasks)} pairs x {len(seeds)} seeds, variant={variant}, '
-          f'm={m}, jobs={jobs}', flush=True)
+    print(f'{len(tasks)} pairs x {len(seeds)} seeds, m={m}, jobs={jobs}', flush=True)
     t0 = time.time()
     if jobs > 1:
         from multiprocessing import Pool
@@ -204,11 +222,13 @@ def run_suite(m, seeds, variant, jobs, out_csv):
 
 
 def dense_reference(x, y, m, rng):
-    """Explicit O(n^2) evaluation of both scores, for verification only.
+    """Explicit O(n^2) evaluation of the score, for verification only.
 
-    Forms the kernel matrix and the quadratic forms directly, with no FFT and no
-    Toeplitz structure, so it shares no code path with the fast implementation.
-    Memory is O(n^2); callers keep n small.
+    Forms the kernel matrix and the quadratic form directly, with no FFT and no
+    Toeplitz structure, and in the difference form 1/2 sum_ij W_ij (y_i - y_j)^2
+    rather than as a difference of quadratic forms, so it shares neither code
+    path nor algebraic arrangement with the fast implementation.  Memory is
+    O(n^2); callers keep n small.
     """
     u = rank_grid(x, rng)
     v = rank_grid(y, rng)
@@ -216,13 +236,11 @@ def dense_reference(x, y, m, rng):
     sigma = grid_sigma(n, m)
     g = np.arange(1, n + 1) / (n + 1.0)
     W = np.exp(-((g[:, None] - g[None, :]) ** 2) / (2.0 * sigma ** 2))
-    deg = W.sum(1)
     mass = W.sum()
     out = {}
     for key, sig in (('fwd', v[np.argsort(u)]), ('rev', u[np.argsort(v)])):
-        z = sig / np.sqrt(deg)
-        out[key] = (float(sig @ sig - z @ (W @ z)) / mass,          # symmetric
-                    float(np.sum(sig * sig * deg) - sig @ (W @ sig)) / mass)
+        d = sig[:, None] - sig[None, :]
+        out[key] = float(0.5 * np.sum(W * d * d)) / mass
     return out
 
 
@@ -236,7 +254,7 @@ def verify(m, n_pairs, max_n=4000):
     sys.path.insert(0, os.path.join(here, 'loci_dataset_benchmark'))
     import datasets as D
 
-    worst = {'sym': 0.0, 'unnorm': 0.0}
+    worst = 0.0
     flips, used, skipped = 0, 0, 0
     for name, _, _, _ in D.BENCHMARKS:
         for pid, c, e, w in D.load(name):
@@ -246,20 +264,18 @@ def verify(m, n_pairs, max_n=4000):
                 skipped += 1
                 continue
             ref = dense_reference(c, e, m, np.random.default_rng(0))
-            for k, variant in ((0, 'sym'), (1, 'unnorm')):
-                f, r, dec = score(c, e, m, np.random.default_rng(0), variant)
-                rf, rr = ref['fwd'][k], ref['rev'][k]
-                worst[variant] = max(worst[variant], abs(f - rf) / abs(rf))
-                flips += (dec != (rf < rr))
+            f, r, dec = score(c, e, m, np.random.default_rng(0))
+            rf, rr = ref['fwd'], ref['rev']
+            worst = max(worst, abs(f - rf) / abs(rf))
+            flips += (dec != (rf < rr))
             used += 1
         if used >= n_pairs:
             break
     print(f'verified {used} benchmark pairs against a dense O(n^2) reference '
           f'({skipped} skipped for n > {max_n})')
-    print(f'  max relative difference, symmetric-normalized : {worst["sym"]:.3e}')
-    print(f'  max relative difference, unnormalized         : {worst["unnorm"]:.3e}')
-    print(f'  decision flips                                : {flips}')
-    return flips == 0 and max(worst.values()) < 1e-10
+    print(f'  max relative difference, unnormalized Laplacian : {worst:.3e}')
+    print(f'  decision flips                                  : {flips}')
+    return flips == 0 and worst < 1e-10
 
 
 def main():
@@ -267,7 +283,6 @@ def main():
     ap.add_argument('--m', type=float, default=0.07362,
                     help='frozen bandwidth multiplier (default: the frozen value)')
     ap.add_argument('--seeds', default='0', help='comma-separated tie-breaking seeds')
-    ap.add_argument('--variant', default='unnorm', choices=['unnorm', 'sym'])
     ap.add_argument('--jobs', type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument('--out', default='results_nlogn.csv')
     ap.add_argument('--verify', type=int, metavar='NPAIRS', default=0,
@@ -292,8 +307,7 @@ def main():
               f'(median of 5, kernel cached)')
         sys.exit(0)
 
-    run_suite(args.m, [int(s) for s in args.seeds.split(',')], args.variant,
-              args.jobs, args.out)
+    run_suite(args.m, [int(s) for s in args.seeds.split(',')], args.jobs, args.out)
 
 
 if __name__ == '__main__':
