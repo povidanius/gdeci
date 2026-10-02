@@ -71,6 +71,8 @@ commit this repository pins.  A plain `git clone` is therefore enough --
 
 ```bash
 docker build -t gdeci .
+
+docker build --build-arg WITH_R_BASELINES=1 -t gdeci .   # or rebuild over the default tag
 ```
 
 About 1.6 GB and a few minutes, most of it the torch CPU wheel and the 73 MB
@@ -79,6 +81,7 @@ of LOCI data.
 ### Run
 
 ```bash
+docker run --rm -it gdeci:r                    # use the image you built
 docker run --rm -it gdeci
 ```
 
