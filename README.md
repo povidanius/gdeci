@@ -33,7 +33,7 @@ docker build --build-arg WITH_R_BASELINES=1 -t gdeci:r .  # + R baselines (QCCD,
 ## Docker run
 
 ```bash
-docker run --rm -it gdeci
+docker run --rm -it gdeci:r 
 ```
 
 opens a shell inside the repository, at `/workspace`, with the benchmark data
