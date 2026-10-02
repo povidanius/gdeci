@@ -65,7 +65,7 @@ yourself:
 ```bash
 docker run --rm -it -u "$(id -u):$(id -g)" \
     -v "$PWD:/workspace" -v /workspace/loci -v /workspace/qpe_cd \
-    gdeci
+    gdeci:r
 ```
 
 The two bare `-v` paths keep the submodules the image fetched visible; they can
