@@ -28,9 +28,7 @@ suite, which the build fetches from the `loci` submodule at the commit this
 repository pins.
 
 ```bash
-docker build -t gdeci .                                   # ~1.6 GB, a few minutes
 docker build --build-arg WITH_R_BASELINES=1 -t gdeci:r .  # + R baselines (QCCD, RESIT, CAM, GRCI), ~3.6 GB
-docker build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121 -t gdeci:cu121 .   # GPU
 ```
 
 | build arg | default | meaning |
