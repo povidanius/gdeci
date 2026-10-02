@@ -80,18 +80,6 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/out:/out" gdeci \
     ./run_nlogn.sh --quick --out /out/results_nlogn.csv
 ```
 
-### Scoring your own data
-
-```bash
-docker run --rm -it -v "$PWD/mydata:/data" gdeci python
->>> import numpy as np
->>> from lap_nlogn import score
->>> x, y = np.loadtxt('/data/mypair.txt', unpack=True)
->>> score(x, y, m=0.07362, rng=np.random.default_rng(0))
-```
-
-`x` and `y` are plain 1-D arrays of equal length; `score` returns the forward
-score, the reverse score and the inferred direction.
 
 ## Scripts
 
