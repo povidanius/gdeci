@@ -30,14 +30,6 @@ repository pins.
 ```bash
 docker build --build-arg WITH_R_BASELINES=1 -t gdeci:r .  # + R baselines (QCCD, RESIT, CAM, GRCI), ~3.6 GB
 ```
-
-| build arg | default | meaning |
-|---|---|---|
-| `TORCH_INDEX_URL` | `.../whl/cpu` | torch wheel index; point it at a `cuNNN` index for GPU support |
-| `FETCH_DATA` | `1` | `0` skips the submodule fetch, leaving a code-only image.  The benchmark scripts then need `loci/data` bind-mounted (`-v "$PWD/loci:/workspace/loci:ro"`); `python laplacian_causality.py` still runs, since `pairs/` ships with the repository |
-| `WITH_R_BASELINES` | `0` | `1` runs `baselines/setup_r_baselines.sh --with-grci` during the build, adding the R environment for QCCD, RESIT, CAM and GRCI (~2.5 GB) |
-| `LOCI_SHA`, `QPE_CD_SHA` | the pinned commits | submodule revisions to fetch; keep them in step with `git ls-tree HEAD loci qpe_cd` |
-
 ## Docker run
 
 ```bash
