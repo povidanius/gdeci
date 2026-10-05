@@ -3,7 +3,7 @@
 <img src="gdeci-small.png" alt="GDECI logo" align="right" width="160">
 
 ```
-git clone --recurse-submodules [THIS URL]
+git clone --recurse-submodules https://github.com/povidanius/gdeci
 ```
 
 Given a sample of two variables the method estimates which causes which.
